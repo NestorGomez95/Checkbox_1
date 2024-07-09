@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One Million Checkboxes</title>
+    <style>
+        .checkbox {
+            margin: 5px;
+        }
+        #counter {
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="counter">Selected checkboxes: 0</div>
+    <div id="checkboxes"></div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        
+        for (let i = 1; i <= 10000; i++) {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `checkbox-${i}`;
+            checkbox.classList.add('checkbox');
+            checkbox.addEventListener('change', () => {
+                socket.emit('checkboxChange', { id: checkbox.id, checked: checkbox.checked });
+            });
+            document.getElementById('checkboxes').appendChild(checkbox);
+        }
+
+       
+        socket.on('updateCheckboxes', (data) => {
+            const { checkboxes, count } = data;
+            for (const id in checkboxes) {
+                document.getElementById(id).checked = checkboxes[id];
+            }
+            document.getElementById('counter').innerText = `Selected checkboxes: ${count}`;
+        });
+
+        
+        socket.on('updateCounter', (count) => {
+            document.getElementById('counter').innerText = `Selected checkboxes: ${count}`;
+        });
+    </script>
+</body>
+</html>
