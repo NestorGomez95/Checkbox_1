@@ -21,7 +21,6 @@
     <script>
         const socket = io();
 
-        
         for (let i = 1; i <= 10000; i++) {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -33,8 +32,7 @@
             document.getElementById('checkboxes').appendChild(checkbox);
         }
 
-       
-        socket.on('updateCheckboxes', (data) => {
+        socket.on('init', (data) => {
             const { checkboxes, count } = data;
             for (const id in checkboxes) {
                 document.getElementById(id).checked = checkboxes[id];
@@ -42,8 +40,11 @@
             document.getElementById('counter').innerText = `Selected checkboxes: ${count}`;
         });
 
-        
-        socket.on('updateCounter', (count) => {
+        socket.on('updateCheckboxes', (data) => {
+            const { checkboxes, count } = data;
+            for (const id in checkboxes) {
+                document.getElementById(id).checked = checkboxes[id];
+            }
             document.getElementById('counter').innerText = `Selected checkboxes: ${count}`;
         });
     </script>
