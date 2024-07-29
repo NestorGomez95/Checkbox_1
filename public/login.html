@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .login-container {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      max-width: 400px;
+      width: 100%;
+    }
+    .login-container h1 {
+      margin-bottom: 20px;
+    }
+    .login-container section {
+      margin-bottom: 15px;
+    }
+    .login-container label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    .login-container input {
+      width: calc(100% - 20px);
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .login-container button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      background-color: #007bff;
+      color: #fff;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .login-container button:hover {
+      background-color: #0056b3;
+    }
+    .logout-button {
+      background-color: #d9534f;
+    }
+    .logout-button:hover {
+      background-color: #c9302c;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <h1>Sign in</h1>
+    <form action="/login/password" method="post">
+      <section>
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+      </section>
+      <section>
+        <label for="current-password">Password</label>
+        <input id="current-password" name="password" type="password" autocomplete="current-password" required>
+      </section>
+      <button type="submit">Sign in</button>
+    </form>
+    <form action="/auth/logout" method="post">
+      <button type="submit" class="logout-button">Sign out</button>
+    </form>
+  </div>
+</body>
+</html>

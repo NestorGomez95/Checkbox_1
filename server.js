@@ -1,118 +1,137 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { Pool } = require('pg');
-const redis = require('redis');
+const sqlite3 = require('sqlite3').verbose();
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const passport = require('passport');
+const path = require('path');
+const fs = require('fs');
+const flash = require('connect-flash');
+const helmet = require('helmet');
+
+require('dotenv').config();
+require('./config/passport'); 
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-const usePostgres = true;
-const pool = usePostgres ? new Pool({
-    user: 'postgres',
-    host: 'localhost',
-    database: 'Checkbox_db',
-    password: 'Lemichu2021', // This is my personal password, please replace it with your own for pgAdmin 
-    port: 5432,
-}) : null;
+const dbDir = path.join(__dirname, 'var', 'db');
+const dbPath = path.join(dbDir, 'database.sqlite');
 
-const redisClient = usePostgres ? null : redis.createClient({
-    host: 'localhost',
-    port: 6379
+
+if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+}
+
+const db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+        console.error('Error opening database', err);
+    } else {
+        console.log('Connected to the SQLite database');
+        initializeDatabase();
+    }
 });
 
-const createTableIfNotExists = async () => {
-    if (usePostgres) {
-        try {
-            await pool.query(`
-                CREATE TABLE IF NOT EXISTS checkbox_state (
-                    id SERIAL PRIMARY KEY,
-                    checkbox_id VARCHAR(255) NOT NULL,
-                    checked BOOLEAN NOT NULL,
-                    CONSTRAINT unique_checkbox_id UNIQUE (checkbox_id)
-                );
-            `);
-            console.log('Table is ready');
-        } catch (err) {
-            console.error('Error creating table', err);
-        }
-    }
-};
-
+app.use(helmet());
 app.use(express.static('public'));
+app.use(session({
+    secret: 'keyboard cat', 
+    resave: false,
+    saveUninitialized: false,
+    store: new SQLiteStore({ db: 'sessions.db', dir: dbDir })
+}));
+app.use(passport.initialize());
+app.use(passport.session()); 
+app.use(flash());
+
+app.get('/favicon.ico', (req, res) => res.status(204).send());
+
+app.use((req, res, next) => {
+    res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; font-src 'self';"
+    );
+    next();
+});
+
+
+app.use('/auth', require('./routes/auth'));
+
+
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+
+const initializeDatabase = () => {
+    db.serialize(() => {
+        db.run(`
+            CREATE TABLE IF NOT EXISTS checkbox_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                checkbox_id TEXT NOT NULL UNIQUE,
+                checked BOOLEAN NOT NULL
+            )
+        `, (err) => {
+            if (err) {
+                console.error('Error creating checkbox_state table', err);
+            } else {
+                console.log('Checkbox state table is ready');
+            }
+        });
+    });
+};
 
 let checkboxes = {};
 let count = 0;
 
-const loadCheckboxesFromPostgres = async () => {
-    try {
-        const res = await pool.query('SELECT checkbox_id, checked FROM checkbox_state');
-        res.rows.forEach(row => {
-            checkboxes[row.checkbox_id] = row.checked;
-            if (row.checked) count++;
-        });
-        console.log('Loaded checkboxes from PostgreSQL');
-    } catch (err) {
-        console.error('Error loading checkboxes from PostgreSQL', err);
-    }
-};
-
-const saveCheckboxToPostgres = async (id, checked) => {
-    try {
-        await pool.query(`
-            INSERT INTO checkbox_state (checkbox_id, checked)
-            VALUES ($1, $2)
-            ON CONFLICT (checkbox_id)
-            DO UPDATE SET checked = EXCLUDED.checked;
-        `, [id, checked]);
-        console.log(`Checkbox ${id} set to ${checked}`);
-    } catch (err) {
-        console.error('Error saving checkbox to PostgreSQL', err);
-    }
-};
-
-const loadCheckboxesFromRedis = async () => {
-    try {
-        redisClient.hgetall('checkbox_state', (err, obj) => {
+const loadCheckboxesFromSQLite = () => {
+    return new Promise((resolve, reject) => {
+        db.all('SELECT checkbox_id, checked FROM checkbox_state', [], (err, rows) => {
             if (err) {
-                console.error('Error loading checkboxes from Redis', err);
+                console.error('Error loading checkboxes from SQLite', err);
+                reject(err);
             } else {
-                checkboxes = obj || {};
-                count = 0;
-                for (let key in checkboxes) {
-                    checkboxes[key] = checkboxes[key] === 'true';
-                    if (checkboxes[key]) count++;
-                }
-                console.log('Loaded checkboxes from Redis');
+                rows.forEach(row => {
+                    checkboxes[row.checkbox_id] = row.checked;
+                    if (row.checked) count++;
+                });
+                console.log('Loaded checkboxes from SQLite');
+                resolve();
             }
         });
-    } catch (err) {
-        console.error('Error loading checkboxes from Redis', err);
-    }
+    });
 };
 
-const saveCheckboxToRedis = async (id, checked) => {
-    try {
-        redisClient.hset('checkbox_state', id, checked.toString());
-        console.log(`Checkbox ${id} set to ${checked}`);
-    } catch (err) {
-        console.error('Error saving checkbox to Redis', err);
-    }
+const saveCheckboxToSQLite = (id, checked) => {
+    return new Promise((resolve, reject) => {
+        db.run(`
+            INSERT INTO checkbox_state (checkbox_id, checked)
+            VALUES (?, ?)
+            ON CONFLICT(checkbox_id) DO UPDATE SET checked = excluded.checked
+        `, [id, checked], function(err) {
+            if (err) {
+                console.error('Error saving checkbox to SQLite', err);
+                reject(err);
+            } else {
+                console.log(`Checkbox ${id} set to ${checked}`);
+                resolve();
+            }
+        });
+    });
 };
 
 const initialize = async () => {
-    await createTableIfNotExists();
-    if (usePostgres) {
-        await loadCheckboxesFromPostgres();
-    } else {
-        await loadCheckboxesFromRedis();
-    }
+    await new Promise((resolve) => {
+        setTimeout(resolve, 1000);
+    });
+    await loadCheckboxesFromSQLite();
 };
 
 io.on('connection', (socket) => {
     socket.emit('init', { checkboxes, count });
-    socket.on('checkboxChange', (data) => {
+    socket.on('checkboxChange', async (data) => {
         const { id, checked } = data;
         checkboxes[id] = checked;
         if (checked) {
@@ -120,11 +139,7 @@ io.on('connection', (socket) => {
         } else {
             count--;
         }
-        if (usePostgres) {
-            saveCheckboxToPostgres(id, checked);
-        } else {
-            saveCheckboxToRedis(id, checked);
-        }
+        await saveCheckboxToSQLite(id, checked);
         io.emit('updateCheckboxes', { checkboxes, count });
     });
 });
@@ -145,7 +160,6 @@ process.on('SIGTERM', () => {
     console.log('Closing http server.');
     server.close(() => {
         console.log('Http server closed.');
-        
         process.exit(0);
     });
 });
@@ -155,7 +169,6 @@ process.on('SIGINT', () => {
     console.log('Closing http server.');
     server.close(() => {
         console.log('Http server closed.');
-        
         process.exit(0);
     });
 });
